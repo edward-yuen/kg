@@ -40,7 +40,7 @@ tasks:
     entity_label: download-models-kg-amp
   - type: create_job
     name: Build the Knowledge Graph
-    script: 2_build-knowledge-graph/ingest-arxiv-data.py
+    script: 2_build-knowledge-graph/ingest-wiki-data.py
     short_summary: Ingest arXiv papers, chunk them and store embedding vectors in a graph database along with author, citation and category information.
     entity_label: build-graph-kg-amp
     arguments: None
