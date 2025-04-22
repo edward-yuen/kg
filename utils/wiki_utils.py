@@ -34,6 +34,22 @@ class WikipediaArticle:
         self.content = content
         self.last_modified = last_modified
         self.linked_pages = linked_pages or []
+        
+        # Generate arxiv_id format: YYMM.NNNNN
+        # Use year and month from last_modified
+        year_month = f"{last_modified.year % 100:02d}{last_modified.month:02d}"  # e.g., 2404 for 2024 April
+        
+        # Convert page_id to a number and take the last 5 digits, with zero padding
+        try:
+            page_num = int(page_id) % 100000  # Take last 5 digits
+        except ValueError:
+            # If page_id is not a number, hash it and take the last 5 digits
+            import hashlib
+            hash_obj = hashlib.md5(page_id.encode())
+            page_num = int(hash_obj.hexdigest(), 16) % 100000
+            
+        self.arxiv_id = f"{year_month}.{page_num:05d}"  # Ensure 5 digits with zero padding
+        
         self._citation_count = None
         self._graph_db_instance = None
 
@@ -121,7 +137,7 @@ def fetch_wikipedia_article(title: str) -> Optional[WikipediaArticle]:
         # Get the summary/metadata
         api_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{encoded_title}"
         summary_response = requests.get(api_url)
-        time.sleep(5)  # Add delay to avoid rate limiting
+        time.sleep(1)  # Add delay to avoid rate limiting
         
         if summary_response.status_code != 200:
             print(f"Error fetching article {title}: {summary_response.status_code}")
@@ -132,7 +148,7 @@ def fetch_wikipedia_article(title: str) -> Optional[WikipediaArticle]:
         # Get full HTML content
         content_url = f"https://en.wikipedia.org/api/rest_v1/page/html/{encoded_title}"
         content_response = requests.get(content_url)
-        time.sleep(5)  # Add delay to avoid rate limiting
+        time.sleep(1)  # Add delay to avoid rate limiting
         
         if content_response.status_code != 200:
             print(f"Error fetching content for {title}: {content_response.status_code}")
@@ -143,7 +159,7 @@ def fetch_wikipedia_article(title: str) -> Optional[WikipediaArticle]:
         # Get categories
         categories_url = f"https://en.wikipedia.org/w/api.php?action=query&prop=categories&format=json&titles={encoded_title}"
         categories_response = requests.get(categories_url)
-        
+        time.sleep(1)
         categories = []
         if categories_response.status_code == 200:
             categories_data = categories_response.json()
@@ -179,7 +195,7 @@ def get_linked_articles(article_title: str) -> List[str]:
     
     try:
         response = requests.get(links_url)
-        time.sleep(5)  # Add delay to avoid rate limiting
+        time.sleep(1)  # Add delay to avoid rate limiting
         
         if response.status_code != 200:
             return []

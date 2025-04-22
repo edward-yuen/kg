@@ -95,17 +95,14 @@ def create_cypher_query_to_insert_wiki_article(article: WikipediaArticle):
     query = f"""
     MERGE (page:WikiPage {{page_id: "{article.page_id}"}})
     ON CREATE
-      SET
+    SET
         page.title = "{title}",
         page.summary = "{summary}",
         page.content = "{content}",
         page.last_modified = {neo4j_date_string},
         page.url = "{article.url}",
-        page.linked_pages = {linked_pages_neo4j}
-    FOREACH (category in {categories_neo4j} | 
-        MERGE (c:Category {{name: category}}) 
-        MERGE (page)-[:BELONGS_TO]->(c)
-    )
+        page.linked_pages = {linked_pages_neo4j},
+        page.id = "{article.arxiv_id}"  # Add id field set to arxiv_id
     """
     return query
 
@@ -140,7 +137,7 @@ for title in seed_articles:
         else:
             print(f"Could not fetch seed article: {title}")
         # Add a delay to avoid API rate limits
-        time.sleep(2)
+        time.sleep(1)
     except Exception as e:
         print(f"Error fetching seed article {title}: {e}")
 
@@ -175,6 +172,7 @@ for article in articles_to_process.copy():
                 if linked_article:
                     articles_to_process.append(linked_article)
                     print(f"Added related article: {link}")
+                time.sleep(1)
             except Exception as e:
                 print(f"Error fetching related article {link}: {e}")
 
@@ -226,7 +224,7 @@ for article in articles_to_process:
     
     # Create document for ingestion
     raw_docs.append(
-        Document(page_content=clean_text, metadata={"page_id": article.page_id})
+        Document(page_content=clean_text, metadata={"arxiv_id": article.arxiv_id})
     )
 
 # Define chunking strategy
@@ -280,7 +278,7 @@ for i, doc in enumerate(documents):
 graph.query(
     """
     MATCH (p:WikiPage), (c:Chunk)
-    WHERE p.page_id = c.page_id
+    WHERE p.id = c.arxiv_id
     MERGE (p)-[:CONTAINS_TEXT]->(c)
     """
 )
