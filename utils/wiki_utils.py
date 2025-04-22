@@ -35,11 +35,15 @@ def generate_categories_with_llm(article_title: str, article_summary: str) -> Li
     llm = get_llm()
     
     prompt_template = """<|start_header_id|>system<|end_header_id|>
-You are an AI language model that specializes in categorizing content. Your task is to generate appropriate categories for Wikipedia articles that match the structure used in academic paper categorization.
+You are an AI language model that specializes in categorizing content. Your task is to generate appropriate categories for Wikipedia articles in a format similar to arXiv categories.
 <|eot_id|><|start_header_id|>user<|end_header_id|>
 Please generate 3-5 categories for the following Wikipedia article. 
-The categories should be concise, relevant to the article's content, and similar to academic paper categories like cs.AI, math.OC, or physics.flu-dyn.
-Format your response as a comma-separated list of categories without any additional text.
+The categories should follow this format: domain.subdomain (e.g., cs.AI, math.OC, physics.fluid-dyn)
+Where:
+- domain is a broader field (cs, math, physics, bio, econ, etc.)
+- subdomain is a more specific area within that field
+
+Format your response as a comma-separated list without any additional text or explanation.
 
 Article Title: {title}
 Article Summary: {summary}
@@ -57,10 +61,14 @@ Article Summary: {summary}
     # Clean up the response and split by commas
     categories = [cat.strip() for cat in response.split(',')]
     
-    # Filter out empty strings
-    categories = [cat for cat in categories if cat]
+    # Filter out empty strings and ensure valid format
+    valid_categories = []
+    for cat in categories:
+        if cat and '.' in cat:  # Basic check that it has a domain.subdomain format
+            # Remove any characters that might cause Cypher issues
+            valid_categories.append(cat)
     
-    return categories
+    return valid_categories
 
 
 class WikipediaArticle:
