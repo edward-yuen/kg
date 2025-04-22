@@ -188,6 +188,8 @@ def fetch_wikipedia_article(title: str) -> Optional[WikipediaArticle]:
         # Get the summary/metadata
         api_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{encoded_title}"
         summary_response = requests.get(api_url)
+        time.sleep(5)  # Add delay to avoid rate limiting
+        
         if summary_response.status_code != 200:
             print(f"Error fetching article {title}: {summary_response.status_code}")
             return None
@@ -197,6 +199,7 @@ def fetch_wikipedia_article(title: str) -> Optional[WikipediaArticle]:
         # Get full HTML content
         content_url = f"https://en.wikipedia.org/api/rest_v1/page/html/{encoded_title}"
         content_response = requests.get(content_url)
+        time.sleep(5)  # Add delay to avoid rate limiting
         
         if content_response.status_code != 200:
             print(f"Error fetching content for {title}: {content_response.status_code}")
@@ -204,20 +207,10 @@ def fetch_wikipedia_article(title: str) -> Optional[WikipediaArticle]:
         
         content_html = content_response.text
         
-        # Get categories
-        categories_url = f"https://en.wikipedia.org/w/api.php?action=query&prop=categories&format=json&titles={encoded_title}"
-        categories_response = requests.get(categories_url)
-        
-        categories = []
-        if categories_response.status_code == 200:
-            categories_data = categories_response.json()
-            page_id = list(categories_data['query']['pages'].keys())[0]
-            if 'categories' in categories_data['query']['pages'][page_id]:
-                categories = [cat['title'].replace('Category:', '') for cat in categories_data['query']['pages'][page_id]['categories']]
-        
         # Get contributors/authors
         contributors_url = f"https://en.wikipedia.org/w/api.php?action=query&prop=contributors&format=json&titles={encoded_title}&pclimit=5"
         contributors_response = requests.get(contributors_url)
+        time.sleep(5)  # Add delay to avoid rate limiting
         
         contributors = []
         if contributors_response.status_code == 200:
@@ -233,13 +226,14 @@ def fetch_wikipedia_article(title: str) -> Optional[WikipediaArticle]:
         # Convert modified date from string to date object
         modified_date = datetime.strptime(summary_data.get('timestamp', '2000-01-01T00:00:00Z'), '%Y-%m-%dT%H:%M:%SZ').date()
         
-        # Create the article object
+        # We'll generate categories using the LLM later
+        # Create the article object with empty categories for now
         return WikipediaArticle(
             page_id=str(summary_data.get('pageid', 0)),
             title=summary_data.get('title', ''),
             url=summary_data.get('content_urls', {}).get('desktop', {}).get('page', ''),
             summary=summary_data.get('extract', ''),
-            categories=categories,
+            categories=[],  # Empty categories to be filled by LLM
             content=content_html,
             last_modified=modified_date,
             linked_pages=[],

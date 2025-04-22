@@ -1,4 +1,5 @@
 import os
+import time
 from dotenv import load_dotenv
 from langchain.docstore.document import Document
 from langchain.graphs import Neo4jGraph
@@ -12,7 +13,7 @@ from utils.data_utils import (
     create_indices_queries,
     sanitize
 )
-from utils.huggingface_utils import cache_and_load_embedding_model
+from utils.huggingface_utils import cache_and_load_embedding_model, load_local_model
 from utils.neo4j_utils import (
     get_neo4j_credentails,
     is_neo4j_server_up,
@@ -49,6 +50,11 @@ graph.query("MATCH (n) DETACH DELETE n")
 # Load embedding model
 embedding = cache_and_load_embedding_model()
 
+# Load local LLM for category generation
+print("Loading local LLM for category generation...")
+llm = load_local_model()
+print("Local LLM loaded successfully.")
+
 # Create category insertion query for oil & gas categories
 def create_query_for_wiki_category_insertion(categories):
     """Create Cypher query to insert Wikipedia categories"""
@@ -74,12 +80,15 @@ papers_to_insert = []
 # First fetch all seed articles and convert to IngestablePaper format
 for title in seed_articles:
     try:
-        paper = create_wiki_paper_object(title)
+        # Use the LLM to generate categories
+        paper = create_wiki_paper_object(title, llm)
         if paper:
             papers_to_insert.append(paper)
-            print(f"Added seed article: {title}")
+            print(f"Added seed article: {title} with categories: {paper.categories}")
         else:
             print(f"Could not fetch seed article: {title}")
+        # Add a delay to avoid API rate limits
+        time.sleep(2)
     except Exception as e:
         print(f"Error fetching seed article {title}: {e}")
 
@@ -115,10 +124,13 @@ for paper in papers_to_insert.copy():
         if link not in all_article_titles:
             all_article_titles.add(link)
             try:
-                linked_paper = create_wiki_paper_object(link)
+                # Use the LLM to generate categories for linked articles
+                linked_paper = create_wiki_paper_object(link, llm)
                 if linked_paper:
                     papers_to_insert.append(linked_paper)
-                    print(f"Added related article: {link}")
+                    print(f"Added related article: {link} with categories: {linked_paper.categories}")
+                # Add a delay to avoid API rate limits
+                time.sleep(2)
             except Exception as e:
                 print(f"Error fetching related article {link}: {e}")
 
@@ -195,7 +207,7 @@ print(f"Number of chunks to be inserted into the knowledge graph: {len(documents
 
 # Insert chunks in batches
 document_batch = []
-batch_size = 150
+batch_size = 50
 for i, doc in enumerate(documents):
     document_batch.append(doc)
     if len(document_batch) < batch_size and i != len(documents) - 1:
