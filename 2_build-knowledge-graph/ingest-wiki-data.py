@@ -92,10 +92,9 @@ for paper in papers_to_insert:
 all_categories = list(set(all_categories))
 print(f"Found {len(all_categories)} unique categories")
 
-# Insert all categories - with error handling
+# Insert all categories
 category_queries = create_query_for_wiki_category_insertion(all_categories)
 successful_categories = 0
-
 for query in category_queries:
     try:
         graph.query(query)
@@ -103,8 +102,7 @@ for query in category_queries:
     except Exception as e:
         print(f"Error inserting category: {e}")
         continue
-
-print(f"Successfully inserted {successful_categories} out of {len(all_categories)} categories")
+print(f"Inserted {successful_categories} out of {len(all_categories)} categories")
 
 # Main data ingestion process
 print("Starting Wikipedia data ingestion for oil and gas articles...")
