@@ -97,10 +97,15 @@ def create_query_for_wiki_category_insertion(categories):
     return query
 
 def create_cypher_query_to_insert_wiki_article(article: WikipediaArticle):
-    """Create Cypher query to insert a Wikipedia article with proper category relationships"""
     neo4j_date_string = f'date("{article.last_modified.strftime("%Y-%m-%d")}")'
     categories_neo4j = '["' + ('","').join([sanitize(c) for c in article.categories]) + '"]'
-    linked_pages_neo4j = '["' + ('","').join([sanitize(p) for p in article.linked_pages]) + '"]'
+    
+    # Convert linked_pages to cited_arxiv_papers format
+    cited_papers = []
+    for linked_page in article.linked_pages:
+        if linked_page in page_id_map:  # Only include pages we've actually added
+            cited_papers.append(page_id_map[linked_page])
+    cited_papers_neo4j = '["' + ('","').join([sanitize(p) for p in cited_papers]) + '"]'
     
     # Sanitize text fields for Neo4j
     title = sanitize(article.title)
@@ -108,31 +113,39 @@ def create_cypher_query_to_insert_wiki_article(article: WikipediaArticle):
     content = sanitize(article.content[:10000]) if len(article.content) > 10000 else sanitize(article.content)
     
     query = f"""
-    MERGE (page:WikiPage {{page_id: "{article.page_id}"}})
+    MERGE (page:Paper {{id: "{article.arxiv_id}"}})
     ON CREATE
     SET
         page.title = "{title}",
         page.summary = "{summary}",
         page.content = "{content}",
-        page.last_modified = {neo4j_date_string},
+        page.published = {neo4j_date_string},  
         page.url = "{article.url}",
-        page.linked_pages = {linked_pages_neo4j},
-        page.id = "{article.arxiv_id}"  # Add id field set to arxiv_id
+        page.arxiv_link = "{article.url}",
+        page.pdf_link = "{article.url}",
+        page.cited_arxiv_papers = {cited_papers_neo4j}, 
+        page.page_id = "{article.page_id}"  
+    
+    WITH page
     
     FOREACH (category in {categories_neo4j} | 
         MERGE (c:Category {{code: category}})
-        MERGE (page)-[:BELONGS_TO_CATEGORY]->(c)
+        MERGE (page)-[:HAS_CATEGORY]->(c)
     )
+    
+    WITH page
+    
+    MERGE (author:Author {{name: "Wikipedia"}})
+    MERGE (page)-[:AUTHORED_BY]->(author)
     """
     return query
 
 def create_cypher_query_for_wiki_links(source_id, target_ids):
-    """Create Cypher query for link relationships between articles"""
     query = f"""
-    MATCH (source:WikiPage {{page_id: "{source_id}"}})
-    MATCH (target:WikiPage)
-    WHERE target.page_id IN {str(target_ids)}
-    MERGE (source)-[:LINKS_TO]->(target)
+    MATCH (source:Paper {{id: "{source_id}"}})
+    MATCH (target:Paper)
+    WHERE target.id IN {str(target_ids)}
+    MERGE (source)-[:CITES]->(target)
     """
     return query
 
@@ -162,7 +175,7 @@ for title in seed_articles:
         print(f"Error fetching seed article {title}: {e}")
 
 # Now fetch related articles (up to a limit)
-related_articles_limit = 10  # Limit related articles per seed to avoid too many
+related_articles_limit = 2  # Limit related articles per seed to avoid too many
 
 for article in articles_to_process.copy():
     linked_articles = get_linked_articles(article.title)
@@ -313,14 +326,13 @@ for i, doc in enumerate(documents):
                 print(f"Error in inserting chunk: {inner_e}")
     document_batch.clear()
 
-# Link the chunks to the articles
+# Link the chunks to the articles (same as arXiv)
 graph.query(
     """
-    MATCH (p:WikiPage), (c:Chunk)
+    MATCH (p:Paper), (c:Chunk)
     WHERE p.id = c.arxiv_id
     MERGE (p)-[:CONTAINS_TEXT]->(c)
     """
-)
 
 # Delete orphan chunks with no articles
 graph.query(

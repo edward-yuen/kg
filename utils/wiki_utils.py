@@ -83,6 +83,7 @@ class WikipediaArticle:
         last_modified: date,
         linked_pages: List[str] = None,
     ):
+        # Original WikiPage properties
         self.page_id = page_id
         self.title = title
         self.url = url
@@ -107,6 +108,14 @@ class WikipediaArticle:
             
         self.arxiv_id = f"{year_month}.{page_num:05d}"  # Ensure 5 digits with zero padding
         
+        # Add arXiv-compatible properties
+        self.published_date = last_modified  # Map last_modified to published_date
+        self.arxiv_link = url  # Map url to arxiv_link
+        self.pdf_link = url  # Map url to pdf_link
+        self.authors = ["Wikipedia"]  # Default author
+        self.full_text = content  # Map content to full_text
+        self.cited_arxiv_papers = linked_pages  # Will be populated with synthetic arxiv_ids later
+        
         self._citation_count = None
         self._graph_db_instance = None
 
@@ -126,54 +135,73 @@ class WikipediaArticle:
     def graph_db_instance(self, value):
         self._graph_db_instance = value
 
-    # Get pages that link to this article
-    def get_linking_pages(self) -> List["WikipediaArticle"]:
-        query = r"""MATCH (p:WikiPage)-[:LINKS_TO]->(cited:WikiPage)
-        WHERE cited.page_id = '$id'
+    # Get pages that link to this article - updated to use Paper nodes and CITES relationship
+    def get_citing_papers(self) -> List["WikipediaArticle"]:
+        query = r"""MATCH (p:Paper)-[:CITES]->(cited:Paper)
+        WHERE cited.id = '$id'
         RETURN {
-        page_id: p.page_id, title: p.title, summary: p.summary, last_modified: p.last_modified, url: p.url, content: p.content,
-        categories: COLLECT { MATCH (p)-[:BELONGS_TO_CATEGORY]->(c:Category) RETURN c.code },
-        links_count: COUNT { (p)<-[:LINKS_TO]-(:WikiPage) }
+        id: p.id, title: p.title, summary: p.summary, published: p.published, 
+        arxiv_link: p.arxiv_link, pdf_link: p.pdf_link, cited_arxiv_papers: p.cited_arxiv_papers,
+        page_id: p.page_id, url: p.url,
+        authors: COLLECT { MATCH (p)-[:AUTHORED_BY]->(a:Author) RETURN a.name },
+        categories: COLLECT { MATCH (p)-[:HAS_CATEGORY]->(c:Category) RETURN c.code },
+        citations: COUNT { (p)<-[:CITES]-(:Paper) }
         } AS result
-        ORDER BY result.links_count DESC
+        ORDER BY result.citations DESC
         """.replace(
-            "$id", self.page_id
+            "$id", self.arxiv_id
         )
         results = self.graph_db_instance.query(query)
-        pages = []
+        papers = list()
         for r in results:
             obj = r["result"]
-            page = WikipediaArticle(
-                page_id=obj["page_id"],
+            paper = WikipediaArticle(
+                page_id=obj.get("page_id", ""),
                 title=obj["title"],
                 summary=obj["summary"],
-                last_modified=obj["last_modified"].to_native(),
-                url=obj["url"],
+                last_modified=obj["published"].to_native(),
+                url=obj.get("url", obj["arxiv_link"]),
                 categories=obj["categories"],
-                content=obj["content"],
-                linked_pages=[],
+                content="",
+                linked_pages=obj.get("cited_arxiv_papers", []),
             )
-            page.citation_count = obj["links_count"]
-            pages.append(page)
-        return pages
+            paper.citation_count = obj["citations"]
+            papers.append(paper)
+        return papers
 
-    # Get categories this article belongs to
+    # Get categories this article belongs to - updated to use HAS_CATEGORY relationship
     def get_top_categories(self) -> List[str]:
-        query = r"""MATCH (p:WikiPage)-[:BELONGS_TO_CATEGORY]->(c:Category)
-        WHERE p.page_id='$id'
+        query = r"""MATCH (p:Paper)-[:HAS_CATEGORY]->(c:Category)
+        WHERE p.id='$id'
         WITH DISTINCT c
         RETURN c.code AS category_code
         """.replace(
-            "$id", self.page_id
+            "$id", self.arxiv_id
         )
         results = self.graph_db_instance.query(query)
         return [r["category_code"] for r in results]
+        
+    # Add a method to match IngestablePaper's get_top_authors
+    def get_top_authors(self) -> List[str]:
+        query = r"""MATCH (p:Paper)-[:AUTHORED_BY]->(a:Author)
+        WHERE p.id='$id'
+        WITH DISTINCT a
+        RETURN {
+            name: a.name,
+            paper_ids: COLLECT {MATCH (op:Paper)-[:AUTHORED_BY]->(a:Author) RETURN op.id }
+        } AS result
+        ORDER BY SIZE(result.paper_ids) DESC
+        """.replace(
+            "$id", self.arxiv_id
+        )
+        results = self.graph_db_instance.query(query)
+        return [r["result"]["name"] for r in results]
 
 
 class WikipediaChunk:
     def __init__(self, text: str, article: WikipediaArticle):
         self.text = text
-        self.article = article
+        self.paper = article  # Changed from article to paper to match PaperChunk
         self._metadata = dict()
 
     @property
@@ -229,7 +257,7 @@ def fetch_wikipedia_article(title: str) -> Optional[WikipediaArticle]:
         modified_date = datetime.strptime(summary_data.get('timestamp', '2000-01-01T00:00:00Z'), '%Y-%m-%dT%H:%M:%SZ').date()
         
         # Create the article object with the LLM-generated categories
-        return WikipediaArticle(
+        article = WikipediaArticle(
             page_id=str(summary_data.get('pageid', 0)),
             title=summary_data.get('title', ''),
             url=summary_data.get('content_urls', {}).get('desktop', {}).get('page', ''),
@@ -239,6 +267,8 @@ def fetch_wikipedia_article(title: str) -> Optional[WikipediaArticle]:
             last_modified=modified_date,
             linked_pages=[],
         )
+        
+        return article
     
     except Exception as e:
         print(f"Error in fetching Wikipedia article for {title}: {e}")
@@ -330,3 +360,52 @@ def linkify_wiki_titles(text: str) -> str:
         )
     
     return new_text
+
+
+def create_cypher_query_to_insert_wiki_article(article: WikipediaArticle):
+    """Create Cypher query to insert a Wikipedia article as a Paper node"""
+    neo4j_date_string = f'date("{article.last_modified.strftime("%Y-%m-%d")}")'
+    categories_neo4j = '["' + ('","').join([sanitize(c) for c in article.categories]) + '"]'
+    linked_pages_neo4j = '["' + ('","').join([sanitize(p) for p in article.linked_pages]) + '"]'
+    
+    # Sanitize text fields for Neo4j
+    title = sanitize(article.title)
+    summary = sanitize(article.summary)
+    content = sanitize(article.content[:10000]) if len(article.content) > 10000 else sanitize(article.content)
+    
+    query = f"""
+    MERGE (page:Paper {{id: "{article.arxiv_id}"}})
+    ON CREATE
+    SET
+        page.title = "{title}",
+        page.summary = "{summary}",
+        page.content = "{content}",
+        page.published = {neo4j_date_string},
+        page.url = "{article.url}",
+        page.arxiv_link = "{article.url}",
+        page.pdf_link = "{article.url}",
+        page.cited_arxiv_papers = {linked_pages_neo4j},
+        page.page_id = "{article.page_id}"
+    
+    FOREACH (category in {categories_neo4j} | 
+        MERGE (c:Category {{code: category}})
+        MERGE (page)-[:HAS_CATEGORY]->(c)
+    )
+    
+    WITH page
+    
+    MERGE (author:Author {{name: "Wikipedia"}})
+    MERGE (page)-[:AUTHORED_BY]->(author)
+    """
+    return query
+
+
+def create_cypher_query_for_wiki_links(source_id, target_ids):
+    """Create Cypher query for citation relationships between articles"""
+    query = f"""
+    MATCH (source:Paper {{id: "{source_id}"}})
+    MATCH (target:Paper)
+    WHERE target.id IN {str(target_ids)}
+    MERGE (source)-[:CITES]->(target)
+    """
+    return query
