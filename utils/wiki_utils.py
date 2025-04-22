@@ -4,6 +4,7 @@ import time
 import requests
 from datetime import date, datetime
 from typing import Dict, List, Optional
+from functools import lru_cache
 
 from bs4 import BeautifulSoup
 from langchain.graphs import Neo4jGraph
@@ -12,6 +13,54 @@ from langchain_core.prompts.prompt import PromptTemplate
 
 from utils.data_utils import sanitize
 import utils.constants as const
+from utils.huggingface_utils import load_local_model
+
+
+# Lazy-loaded LLM instance
+_llm_instance = None
+
+def get_llm() -> BaseLLM:
+    """Lazy-load the LLM only when needed"""
+    global _llm_instance
+    if _llm_instance is None:
+        print("Initializing LLM for category generation...")
+        _llm_instance = load_local_model()
+    return _llm_instance
+
+
+def generate_categories_with_llm(article_title: str, article_summary: str) -> List[str]:
+    """Generate categories for a Wikipedia article using an LLM"""
+    
+    # Get the LLM instance (will be initialized if needed)
+    llm = get_llm()
+    
+    prompt_template = """<|start_header_id|>system<|end_header_id|>
+You are an AI language model that specializes in categorizing content. Your task is to generate appropriate categories for Wikipedia articles that match the structure used in academic paper categorization.
+<|eot_id|><|start_header_id|>user<|end_header_id|>
+Please generate 3-5 categories for the following Wikipedia article. 
+The categories should be concise, relevant to the article's content, and similar to academic paper categories like cs.AI, math.OC, or physics.flu-dyn.
+Format your response as a comma-separated list of categories without any additional text.
+
+Article Title: {title}
+Article Summary: {summary}
+<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+"""
+    
+    prompt = PromptTemplate.from_template(const.llama3_bos_token + prompt_template)
+    chain = prompt | llm
+    
+    response = chain.invoke({
+        "title": article_title,
+        "summary": article_summary,
+    })
+    
+    # Clean up the response and split by commas
+    categories = [cat.strip() for cat in response.split(',')]
+    
+    # Filter out empty strings
+    categories = [cat for cat in categories if cat]
+    
+    return categories
 
 
 class WikipediaArticle:
@@ -75,7 +124,7 @@ class WikipediaArticle:
         WHERE cited.page_id = '$id'
         RETURN {
         page_id: p.page_id, title: p.title, summary: p.summary, last_modified: p.last_modified, url: p.url, content: p.content,
-        categories: COLLECT { MATCH (p)-->(c:Category) RETURN c.name },
+        categories: COLLECT { MATCH (p)-[:BELONGS_TO_CATEGORY]->(c:Category) RETURN c.code },
         links_count: COUNT { (p)<-[:LINKS_TO]-(:WikiPage) }
         } AS result
         ORDER BY result.links_count DESC
@@ -102,15 +151,15 @@ class WikipediaArticle:
 
     # Get categories this article belongs to
     def get_top_categories(self) -> List[str]:
-        query = r"""MATCH (p:WikiPage)-[:BELONGS_TO]->(c:Category)
+        query = r"""MATCH (p:WikiPage)-[:BELONGS_TO_CATEGORY]->(c:Category)
         WHERE p.page_id='$id'
         WITH DISTINCT c
-        RETURN c.name AS category_name
+        RETURN c.code AS category_code
         """.replace(
             "$id", self.page_id
         )
         results = self.graph_db_instance.query(query)
-        return [r["category_name"] for r in results]
+        return [r["category_code"] for r in results]
 
 
 class WikipediaChunk:
@@ -129,7 +178,7 @@ class WikipediaChunk:
 
 
 def fetch_wikipedia_article(title: str) -> Optional[WikipediaArticle]:
-    """Fetch article data from Wikipedia API"""
+    """Fetch article data from Wikipedia API and generate categories using LLM"""
     # Encode the title for URLs
     encoded_title = requests.utils.quote(title)
     
@@ -156,28 +205,28 @@ def fetch_wikipedia_article(title: str) -> Optional[WikipediaArticle]:
         
         content_html = content_response.text
         
-        # Get categories
-        categories_url = f"https://en.wikipedia.org/w/api.php?action=query&prop=categories&format=json&titles={encoded_title}"
-        categories_response = requests.get(categories_url)
-        time.sleep(1)
+        # Generate categories using LLM
         categories = []
-        if categories_response.status_code == 200:
-            categories_data = categories_response.json()
-            page_id = list(categories_data['query']['pages'].keys())[0]
-            if 'categories' in categories_data['query']['pages'][page_id]:
-                categories = [cat['title'].replace('Category:', '') for cat in categories_data['query']['pages'][page_id]['categories']]
+        if summary_data.get('extract'):
+            try:
+                categories = generate_categories_with_llm(
+                    article_title=summary_data.get('title', ''),
+                    article_summary=summary_data.get('extract', '')
+                )
+                print(f"Generated {len(categories)} categories for {title} using LLM")
+            except Exception as e:
+                print(f"Error generating categories with LLM for {title}: {e}")
         
         # Convert modified date from string to date object
         modified_date = datetime.strptime(summary_data.get('timestamp', '2000-01-01T00:00:00Z'), '%Y-%m-%dT%H:%M:%SZ').date()
         
-        # We'll generate categories using the LLM later
-        # Create the article object with empty categories for now
+        # Create the article object with the LLM-generated categories
         return WikipediaArticle(
             page_id=str(summary_data.get('pageid', 0)),
             title=summary_data.get('title', ''),
             url=summary_data.get('content_urls', {}).get('desktop', {}).get('page', ''),
             summary=summary_data.get('extract', ''),
-            categories=[],  # Empty categories to be filled by LLM
+            categories=categories,  # Using LLM-generated categories
             content=content_html,
             last_modified=modified_date,
             linked_pages=[],
