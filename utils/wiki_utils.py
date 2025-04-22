@@ -1,13 +1,17 @@
 import json
 import re
+import time
 import requests
 from datetime import date, datetime
 from typing import Dict, List, Optional
 
 from bs4 import BeautifulSoup
 from langchain.graphs import Neo4jGraph
+from langchain_core.language_models.llms import BaseLLM
+from langchain_core.prompts.prompt import PromptTemplate
 
 from utils.data_utils import sanitize
+import utils.constants as const
 
 
 class IngestablePaper:
@@ -252,6 +256,8 @@ def get_linked_articles(article_title: str) -> List[str]:
     
     try:
         response = requests.get(links_url)
+        time.sleep(5)  # Add delay to avoid rate limiting
+        
         if response.status_code != 200:
             return []
         
@@ -272,6 +278,61 @@ def get_linked_articles(article_title: str) -> List[str]:
         print(f"Error getting links for {article_title}: {e}")
         return []
 
+
+def generate_categories_with_llm(title: str, summary: str, llm: BaseLLM) -> List[str]:
+    """Generate categories for a Wikipedia article using an LLM"""
+    
+    # Define a prompt template for category generation
+    category_prompt = PromptTemplate.from_template(
+        const.llama3_bos_token + """<|start_header_id|>system<|end_header_id|>
+You are an AI assistant specialized in categorizing content. Your task is to generate relevant categories for Wikipedia articles about oil and gas topics.
+<|eot_id|><|start_header_id|>user<|end_header_id|>
+Generate 3-6 relevant categories for the following Wikipedia article. Focus on oil and gas industry-related categories.
+Each category should be a single term or short phrase (2-4 words maximum).
+Categories should be specific and helpful for organizing the content in an oil and gas knowledge graph.
+
+Article Title: {title}
+Article Summary: {summary}
+
+Output only the list of categories, one per line, with no numbering or additional text.
+<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+"""
+    )
+    
+    try:
+        # Generate categories using the LLM
+        response = llm.invoke(
+            category_prompt.format(title=title, summary=summary)
+        )
+        
+        # Parse the categories from the response
+        categories = [
+            cat.strip() for cat in response.strip().split('\n')
+            if cat.strip() and len(cat.strip()) > 0
+        ]
+        
+        # Filter out any categories that are too long (more than 5 words)
+        categories = [
+            cat for cat in categories 
+            if len(cat.split()) <= 5 and len(cat) > 0
+        ]
+        
+        # Ensure we have at least one category
+        if not categories:
+            categories = ["Oil and Gas"]
+            
+        # Add the title as a category if it's short enough
+        if len(title.split()) <= 3 and title not in categories:
+            categories.append(title)
+            
+        return categories
+        
+    except Exception as e:
+        print(f"Error generating categories with LLM for {title}: {e}")
+        # Return default categories if LLM fails
+        return ["Oil and Gas", title]
+
+
 def get_linked_page_ids(articles_to_process: List[WikipediaArticle]) -> Dict[str, str]:
     """Create a mapping from article title to page_id for linked pages"""
     # First build a map of all known titles to their page IDs
@@ -281,7 +342,8 @@ def get_linked_page_ids(articles_to_process: List[WikipediaArticle]) -> Dict[str
     
     return title_to_id_map
 
-def create_wiki_paper_object(title: str) -> Optional[IngestablePaper]:
+
+def create_wiki_paper_object(title: str, llm: Optional[BaseLLM] = None) -> Optional[IngestablePaper]:
     """Create an IngestablePaper object from a Wikipedia article title"""
     # Fetch the article data
     wiki_article = fetch_wikipedia_article(title)
@@ -290,7 +352,13 @@ def create_wiki_paper_object(title: str) -> Optional[IngestablePaper]:
     
     # Get linked articles
     linked_articles = get_linked_articles(title)
+    time.sleep(5)  # Add delay to avoid rate limiting
     wiki_article.linked_pages = linked_articles
+    
+    # Generate categories using LLM if provided
+    if llm:
+        categories = generate_categories_with_llm(wiki_article.title, wiki_article.summary, llm)
+        wiki_article.categories = categories
     
     # Convert to IngestablePaper format for compatibility with existing pipeline
     return wiki_article.to_ingestable_paper()
