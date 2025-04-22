@@ -136,6 +136,7 @@ class WikipediaArticle:
         self._graph_db_instance = value
 
     # Get pages that link to this article - updated to use Paper nodes and CITES relationship
+    # Get pages that link to this article - updated to use Paper nodes and CITES relationship
     def get_citing_papers(self) -> List["WikipediaArticle"]:
         query = r"""MATCH (p:Paper)-[:CITES]->(cited:Paper)
         WHERE cited.id = '$id'
@@ -165,6 +166,7 @@ class WikipediaArticle:
                 content="",
                 linked_pages=obj.get("cited_arxiv_papers", []),
             )
+            # This is where citation_count is set
             paper.citation_count = obj["citations"]
             papers.append(paper)
         return papers
