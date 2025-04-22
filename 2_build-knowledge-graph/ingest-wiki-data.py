@@ -56,15 +56,55 @@ llm = load_local_model()
 print("Local LLM loaded successfully.")
 
 # Create category insertion query for oil & gas categories
+# Replace the existing create_query_for_wiki_category_insertion function with this one:
+
 def create_query_for_wiki_category_insertion(categories):
-    """Create Cypher query to insert Wikipedia categories"""
-    query = ""
+    """Create Cypher query to insert Wikipedia categories with better error handling"""
+    queries = []
     for i, category in enumerate(categories):
+        # Skip empty categories
+        if not category or len(category.strip()) == 0:
+            continue
+            
+        # Ensure category is properly sanitized
         safe_category = sanitize(category)
-        query += f"""
-            CREATE (category_{i}:Category {{code: "{safe_category}", title: "{safe_category}", description: "Oil and Gas category"}})
-        """
-    return query
+        
+        # Skip if category became empty after sanitization
+        if not safe_category:
+            continue
+            
+        # Create a separate query for each category for better error handling
+        queries.append(f"""
+            MERGE (category_{i}:Category {{code: "{safe_category}"}})
+            ON CREATE SET
+                category_{i}.title = "{safe_category}",
+                category_{i}.description = "Oil and Gas category"
+        """)
+    
+    return queries
+
+# Then modify the category insertion part of the script:
+
+# Get all unique categories
+all_categories = []
+for paper in papers_to_insert:
+    all_categories.extend(paper.categories)
+all_categories = list(set(all_categories))
+print(f"Found {len(all_categories)} unique categories")
+
+# Insert all categories - with error handling
+category_queries = create_query_for_wiki_category_insertion(all_categories)
+successful_categories = 0
+
+for query in category_queries:
+    try:
+        graph.query(query)
+        successful_categories += 1
+    except Exception as e:
+        print(f"Error inserting category: {e}")
+        continue
+
+print(f"Successfully inserted {successful_categories} out of {len(all_categories)} categories")
 
 # Main data ingestion process
 print("Starting Wikipedia data ingestion for oil and gas articles...")
