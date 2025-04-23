@@ -200,9 +200,8 @@ def generate_responses_v2(input_text):
 
 
 with st.form("my_form"):
-    if 'form_submitted' in st.session_state and st.session_state['form_submitted']:
-        st.session_state[st_commons.StateVariables.QUESTION_FROM_DROPDOWN.value] = None
-        st.session_state['form_submitted'] = False
+    if 'answered_mode' not in st.session_state:
+        st.session_state['answered_mode'] = False
     input_text = ""
     st.session_state[st_commons.StateVariables.QUESTION_FROM_DROPDOWN.value] = (
         st.selectbox(
@@ -217,10 +216,8 @@ with st.form("my_form"):
         value="",
         disabled=(
             (st_commons.StateVariables.QUESTION_FROM_DROPDOWN.value in st.session_state)
-            and (
-                st.session_state[st_commons.StateVariables.QUESTION_FROM_DROPDOWN.value]
-                is not None
-            )
+            and (st.session_state[st_commons.StateVariables.QUESTION_FROM_DROPDOWN.value] is not None)
+            and not st.session_state['answered_mode']  # Only disable if not in answered mode
         ),
         height=10,
     )
@@ -232,5 +229,5 @@ with st.form("my_form"):
         generate_responses_v2(
             question_from_dropdown if question_from_dropdown is not None else input_text
         )
-        st.session_state['form_submitted'] = True
-        st.experimental_rerun()
+        # Enable text entry for next question by setting answered mode
+        st.session_state['answered_mode'] = True
