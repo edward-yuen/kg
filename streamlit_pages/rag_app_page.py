@@ -200,6 +200,9 @@ def generate_responses_v2(input_text):
 
 
 with st.form("my_form"):
+    if 'form_submitted' in st.session_state and st.session_state['form_submitted']:
+        st.session_state[st_commons.StateVariables.QUESTION_FROM_DROPDOWN.value] = None
+        st.session_state['form_submitted'] = False
     input_text = ""
     st.session_state[st_commons.StateVariables.QUESTION_FROM_DROPDOWN.value] = (
         st.selectbox(
@@ -229,3 +232,5 @@ with st.form("my_form"):
         generate_responses_v2(
             question_from_dropdown if question_from_dropdown is not None else input_text
         )
+        st.session_state['form_submitted'] = True
+        st.experimental_rerun()
