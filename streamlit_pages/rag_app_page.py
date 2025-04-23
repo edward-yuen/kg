@@ -151,12 +151,20 @@ def generate_responses_v2(input_text):
         kg_chunks_used = k.retrieve_chunks(input_text)
         with kg_context_expander:
             format_context(kg_chunks_used)
-        kg_context_authors = [
-            a for ax in [pc.paper.authors for pc in kg_chunks_used] for a in ax
-        ]
+            kg_context_authors = [
+                a for ax in [pc.paper.authors for pc in kg_chunks_used] for a in ax
+            ]
         answer_kg = k.invoke(input_text)
         papers_used_in_kg_answer = k.used_papers
-        kg_answer_container.markdown(linkify_wiki_titles(answer_kg))
+        # Create an article_map from papers used in the answer
+        article_map = {}
+
+        # Collect article URLs from KG answer papers
+        for paper in papers_used_in_kg_answer:
+            article_map[paper.arxiv_id] = paper.url
+
+
+        kg_answer_container.markdown(linkify_wiki_titles(answer_kg, article_map))
         kg_col.markdown("---")
 
         status.write("Generating additional details about the answer...")
@@ -166,7 +174,7 @@ def generate_responses_v2(input_text):
             "### Related Papers and Authors(from the knowledge graph)"
         )
         kg_additional_container.markdown(
-            linkify_wiki_titles(kg_additional_context)
+            linkify_wiki_titles(kg_additional_context, article_map))
         )
         kg_col.markdown("---")
 
@@ -189,7 +197,7 @@ def generate_responses_v2(input_text):
         with vanilla_context_expander:
             format_context(vanilla_chunks_used)
         answer_vanilla = v.invoke(input_text)
-        vanilla_answer_container.markdown(linkify_wiki_titles(answer_vanilla))
+        vanilla_answer_container.markdown(linkify_wiki_titles(answer_vanilla, article_map))
         vanilla_col.markdown("---")
 
         status.update(
@@ -227,4 +235,3 @@ with st.form("my_form"):
         generate_responses_v2(
             question_from_dropdown if question_from_dropdown is not None else input_text
         )
-        

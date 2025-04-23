@@ -382,18 +382,40 @@ def get_seed_oil_gas_articles() -> List[str]:
     ]
 
 
-def linkify_wiki_titles(text: str) -> str:
-    """Convert Wikipedia article titles in text to markdown links"""
-    article_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b'
-    articles = re.findall(article_pattern, text)
-    articles = list(set(articles))
+def linkify_wiki_titles(text: str, article_map: dict = None) -> str:
+    """
+    Convert article IDs in text to markdown links using proper URLs
+    
+    Args:
+        text: The text containing article IDs
+        article_map: Dictionary mapping article IDs to their Wikipedia URLs
+    
+    Returns:
+        Text with article IDs converted to markdown links
+    """
+    if article_map is None:
+        article_map = {}
+        
+    # Pattern for article IDs in the format YYMM.NNNNN
+    article_id_pattern = r'\b(\d{4}\.\d{5})\b'
+    article_ids = re.findall(article_id_pattern, text)
     
     new_text = text
-    for article in articles:
-        encoded_article = requests.utils.quote(article)
+    for article_id in article_ids:
+        # Skip if already within markdown link syntax
+        if f"[{article_id}](" in new_text:
+            continue
+        
+        # Get the URL for this article ID
+        url = article_map.get(article_id)
+        if not url:
+            # If no URL mapping is provided, skip this ID
+            continue
+        
+        # Replace the article ID with a markdown link
         new_text = re.sub(
-            r'\b' + re.escape(article) + r'\b',
-            f"[{article}](https://en.wikipedia.org/wiki/{encoded_article})",
+            r'\b' + re.escape(article_id) + r'\b',
+            f"[{article_id}]({url})",
             new_text
         )
     
