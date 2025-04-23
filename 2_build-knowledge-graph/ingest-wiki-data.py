@@ -94,16 +94,17 @@ for title in seed_articles:
         print(f"Error fetching seed article {title}: {e}")
 
 # Now fetch related articles (up to a limit)
-related_articles_limit = 2  # Limit related articles per seed to avoid too many
+related_articles_limit = 20  # Limit related articles per seed to avoid too many
 
 for article in articles_to_process.copy():
     linked_articles = get_linked_articles(article.title)
     
     # Filter links to keep only those that might be relevant to oil & gas
-    relevant_keywords = ["oil", "gas", "petroleum", "energy", "drilling", "refinery", 
-                         "fuel", "hydrocarbon", "pipeline", "opec", "reservoir", 
-                         "offshore", "extraction", "well", "natural", "production", 
-                         "exploration", "geology", "industry"]
+    relevant_keywords = [" "]
+    # ["oil", "gas", "petroleum", "energy", "drilling", "refinery", 
+    #                      "fuel", "hydrocarbon", "pipeline", "opec", "reservoir", 
+    #                      "offshore", "extraction", "well", "natural", "production", 
+    #                      "exploration", "geology", "industry"]
     
     relevant_links = []
     for link in linked_articles:
@@ -310,7 +311,7 @@ print(f"Number of chunks inserted into the knowledge graph: {chunk_count}")
 article_count = graph.query(
     """
     MATCH (p:Paper)
-    WHERE EXISTS(p.page_id)  # Only count Wikipedia articles
+    WHERE EXISTS(p.page_id)  
     RETURN COUNT(p) as article_count
     """
 )[0]["article_count"]
@@ -325,7 +326,7 @@ category_count = graph.query(
 link_count = graph.query(
     """
     MATCH (source:Paper)-[r:CITES]->(target:Paper)
-    WHERE EXISTS(source.page_id) AND EXISTS(target.page_id)  # Only count Wikipedia links
+    WHERE EXISTS(source.page_id) AND EXISTS(target.page_id)  
     RETURN COUNT(r) as link_count
     """
 )[0]["link_count"]

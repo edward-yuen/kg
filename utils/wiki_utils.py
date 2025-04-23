@@ -37,7 +37,7 @@ def generate_categories_with_llm(article_title: str, article_summary: str) -> Li
     prompt_template = """<|start_header_id|>system<|end_header_id|>
 You are an AI language model that specializes in categorizing content. Your task is to generate appropriate categories for Wikipedia articles in a format similar to arXiv categories.
 <|eot_id|><|start_header_id|>user<|end_header_id|>
-Please generate 3-5 categories for the following Wikipedia article. 
+Please generate 5-10 categories for the following Wikipedia article. 
 The categories should follow this format: domain.subdomain (e.g., cs.AI, math.OC, physics.fluid-dyn)
 Where:
 - domain is a broader field (cs, math, physics, bio, econ, etc.)
@@ -135,7 +135,6 @@ class WikipediaArticle:
     def graph_db_instance(self, value):
         self._graph_db_instance = value
 
-    # Get pages that link to this article - updated to use Paper nodes and CITES relationship
     # Get pages that link to this article - updated to use Paper nodes and CITES relationship
     def get_citing_papers(self) -> List["WikipediaArticle"]:
         query = r"""MATCH (p:Paper)-[:CITES]->(cited:Paper)
@@ -277,16 +276,27 @@ def fetch_wikipedia_article(title: str) -> Optional[WikipediaArticle]:
         return None
 
 
-def get_linked_articles(article_title: str) -> List[str]:
-    """Get titles of articles linked from the given article"""
+def get_linked_articles(article_title: str, limit: int = 20) -> List[str]:
+    """Get random titles of articles linked from the given article
+    
+    Args:
+        article_title: The title of the Wikipedia article
+        limit: Maximum number of random links to return (default: 20)
+        
+    Returns:
+        List of article titles linked from the given article
+    """
+    import random
+    
     encoded_title = requests.utils.quote(article_title)
     links_url = f"https://en.wikipedia.org/w/api.php?action=query&prop=links&format=json&titles={encoded_title}&pllimit=500"
     
     try:
         response = requests.get(links_url)
-        time.sleep(1)  # Add delay to avoid rate limiting
+        time.sleep(2)  # Increased delay to 2 seconds as requested
         
         if response.status_code != 200:
+            print(f"Error getting links for {article_title}: HTTP {response.status_code}")
             return []
         
         data = response.json()
@@ -294,13 +304,25 @@ def get_linked_articles(article_title: str) -> List[str]:
         
         # Extract first page (there should only be one)
         if not pages:
+            print(f"No pages found for {article_title}")
             return []
         
         page_id = list(pages.keys())[0]
         links = pages[page_id].get('links', [])
         
+        if not links:
+            print(f"No links found for {article_title}")
+            return []
+        
         # Extract titles from links
-        return [link.get('title') for link in links if 'title' in link]
+        all_links = [link.get('title') for link in links if 'title' in link]
+        print(f"Found {len(all_links)} links for {article_title}")
+        
+        # Randomize and limit the number of links
+        if len(all_links) <= limit:
+            return all_links
+        else:
+            return random.sample(all_links, limit)
     
     except Exception as e:
         print(f"Error getting links for {article_title}: {e}")
@@ -323,6 +345,20 @@ def extract_clean_text_from_html(html_content: str) -> str:
 def get_seed_oil_gas_articles() -> List[str]:
     """Return a list of seed articles related to oil and gas"""
     return [
+        "Natural gas processing",
+        "Production engineer",
+        "Optimizing production",
+        "Adjusting choke settings",
+        "Artificial lift systems",
+        "Production rates in shale",
+        "Frac spacing",
+        "Multi-stage fracturing",
+        "Potential causes for pressure drops",
+        "Pump wear",
+        "Reservoir blockage",
+        "Equipment maintenance log",
+        "Acidizing",
+        "Produced water"
         "Petroleum",
         "Natural gas",
         "Petroleum industry",
@@ -342,7 +378,7 @@ def get_seed_oil_gas_articles() -> List[str]:
         "Oil sands",
         "Reservoir engineering",
         "Seismic survey",
-        "Natural gas processing"
+
     ]
 
 

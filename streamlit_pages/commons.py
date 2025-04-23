@@ -45,12 +45,10 @@ class StateVariables(Enum):
 
 
 example_questions = [
-    "What is the difference between GPT-3 and GPT-4?",
-    "How do LLMs help in achieving artificial general intelligence?",
-    "What are agentic workflows in AI?",
-    "Where do vector embeddings fit in a RAG pipeline?",
-    "How does knowledge graph help in improving the quality of a RAG pipeline?",
-    "What are some uses of decoder-only transformers?",
+    "How can I improve production rates in a shale well?",
+    "What might cause a sudden flow rate decline?",
+    "What are the safety rules for handling produced water?",
+    "What's the recommended strategy for managing reservoir pressure?",
 ]
 
 local_llm_text = f"4-bit quantized {const.local_model_to_be_quantised.split('/')[1]} model will be used which will utilise in-session GPU. The model has already been quantized as part of the AMP steps."

@@ -10,7 +10,7 @@ from langchain_core.language_models.llms import BaseLLM
 import streamlit_pages.commons as st_commons
 import streamlit_pages.graph_visualisation as st_graph_viz
 import utils.constants as const
-from utils.arxiv_utils import (
+from utils.wiki_utils import (
     IngestablePaper,
     PaperChunk,
     linkify_arxiv_ids,
@@ -29,7 +29,7 @@ embedding = st_commons.get_cached_embedding_model()
 
 st.header("Knowledge Graph powered RAG")
 st.subheader(
-    "A subset of AI/ML papers from :blue[_arXiv_] have been curated and pre-loaded into the knowledge base to answer your questions."
+    "A subset of Oil and Gas articles from :blue[_Wikipedia_] have been curated and pre-loaded into the knowledge base to answer your questions."
 )
 
 if st_commons.StateVariables.IS_REMOTE_LLM.value not in st.session_state:
@@ -85,7 +85,7 @@ def format_context(paper_chunks: List[PaperChunk]):
         st.markdown(
             f"""
 ### {paper.title}
-**Arxiv ID**: [{paper.arxiv_id}]({paper.arxiv_link})   
+**Article**: [{paper.arxiv_id}]({paper.arxiv_link})   
 :blue[**Citiation Count**]: {paper.citation_count}  
 *Chunks Used*:
 """

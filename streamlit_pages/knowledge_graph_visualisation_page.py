@@ -73,7 +73,7 @@ def _create_knowledege_base_networkX_graph(
 ) -> nx.Graph:
     def _get_hover_data(paper: Dict):
         hover_string = paper["title"] + "\n"
-        hover_string += "Arxiv ID: " + paper["id"] + "\n"
+        hover_string += "Article: " + paper["id"] + "\n"
         hover_string += "Published: " + paper["published"].to_native().strftime(
             "%B %d, %Y"
         )
@@ -156,7 +156,7 @@ def visualise_first_and_second_degree_cited_by_papers(
 
 
 paper_col, viz_col = st.columns([0.4, 0.6], gap="small")
-paper_col.markdown("## :blue[_arXiv_] papers in the Knowledge Graph")
+paper_col.markdown("## :blue[_Wikipedia_] articles in the Knowledge Graph")
 paper_container = paper_col.container(height=700, border=False)
 graph_header = viz_col.container(border=False)
 graph_container = viz_col.container(height=700, border=False)
@@ -172,8 +172,8 @@ def button_callback(arxiv_id: str):
         components.html(htmlfile_source_code, height=670, scrolling=True)
     viz_col.markdown(
         f"""
-Showing :violet[first] and :green[second] degree \"cited by\" relationships for paper #[{arxiv_id}](https://arxiv.org/abs/{arxiv_id}).
-The paper #[{arxiv_id}](https://arxiv.org/abs/{arxiv_id}) is shown in :blue[blue].
+Showing :violet[first] and :green[second] degree \"cited by\" relationships for paper #[{arxiv_id}]({arxiv_link}).
+The paper #[{arxiv_id}]({arxiv_link}) is shown in :blue[blue].
 """
     )
 
@@ -191,7 +191,7 @@ for record in all_papers_data:
         f"""
 <span id="paper-entry-{arxiv_id}"></span>
 #### {paper_title}
-**Arxiv ID**: [{arxiv_id}]({arxiv_link})  
+**Article**: [{arxiv_id}]({arxiv_link})  
 **Published On**: {published_string}  
 **Citiation Count**: {citation_count}
 """,
