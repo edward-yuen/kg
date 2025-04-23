@@ -156,15 +156,9 @@ def generate_responses_v2(input_text):
             ]
         answer_kg = k.invoke(input_text)
         papers_used_in_kg_answer = k.used_papers
-        # Create an article_map from papers used in the answer
-        article_map = {}
-
-        # Collect article URLs from KG answer papers
-        for paper in papers_used_in_kg_answer:
-            article_map[paper.arxiv_id] = paper.url
 
 
-        kg_answer_container.markdown(linkify_wiki_titles(answer_kg, article_map))
+        kg_answer_container.markdown(linkify_wiki_titles(answer_kg, graph))
         kg_col.markdown("---")
 
         status.write("Generating additional details about the answer...")
@@ -174,7 +168,7 @@ def generate_responses_v2(input_text):
             "### Related Papers and Authors(from the knowledge graph)"
         )
         kg_additional_container.markdown(
-            linkify_wiki_titles(kg_additional_context, article_map))
+            linkify_wiki_titles(kg_additional_context, graph)
         )
         kg_col.markdown("---")
 
@@ -197,7 +191,7 @@ def generate_responses_v2(input_text):
         with vanilla_context_expander:
             format_context(vanilla_chunks_used)
         answer_vanilla = v.invoke(input_text)
-        vanilla_answer_container.markdown(linkify_wiki_titles(answer_vanilla, article_map))
+        vanilla_answer_container.markdown(linkify_wiki_titles(answer_vanilla, graph))
         vanilla_col.markdown("---")
 
         status.update(

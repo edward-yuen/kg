@@ -382,40 +382,75 @@ def get_seed_oil_gas_articles() -> List[str]:
     ]
 
 
-def linkify_wiki_titles(text: str, article_map: dict = None) -> str:
+def linkify_wiki_titles(text: str, graph_db=None) -> str:
     """
-    Convert article IDs in text to markdown links using proper URLs
+    Convert article IDs in text to markdown links using article titles for search
     
     Args:
         text: The text containing article IDs
-        article_map: Dictionary mapping article IDs to their Wikipedia URLs
+        graph_db: Neo4j graph database instance to lookup article info
     
     Returns:
         Text with article IDs converted to markdown links
     """
-    if article_map is None:
-        article_map = {}
-        
+    import re
+    import requests
+    
     # Pattern for article IDs in the format YYMM.NNNNN
     article_id_pattern = r'\b(\d{4}\.\d{5})\b'
     article_ids = re.findall(article_id_pattern, text)
     
+    # Skip if no article IDs found or no graph DB provided
+    if not article_ids or graph_db is None:
+        return text
+        
+    # Create maps of article IDs to URLs and titles
+    article_map = {}
+    try:
+        # Get URLs and titles for all found article IDs in a single query
+        query = f"""
+        MATCH (p:Paper)
+        WHERE p.id IN {str(article_ids)}
+        RETURN p.id as id, p.url as url, p.title as title
+        """
+        results = graph_db.query(query)
+        
+        # Build the article maps from query results
+        for result in results:
+            article_map[result["id"]] = {
+                "url": result["url"],
+                "title": result["title"]
+            }
+    except Exception as e:
+        logging.error(f"Error querying graph database: {e}")
+    
+    # Apply the links
     new_text = text
     for article_id in article_ids:
         # Skip if already within markdown link syntax
         if f"[{article_id}](" in new_text:
             continue
         
-        # Get the URL for this article ID
-        url = article_map.get(article_id)
-        if not url:
-            # If no URL mapping is provided, skip this ID
-            continue
+        # Get the article info
+        article_info = article_map.get(article_id, {})
+        url = article_info.get("url")
+        title = article_info.get("title")
+        
+        if url:
+            # Use the direct URL if available
+            link_url = url
+        elif title:
+            # If we only have the title, create a search URL with the title
+            encoded_title = requests.utils.quote(title)
+            link_url = f"https://en.wikipedia.org/wiki/{encoded_title}"
+        else:
+            # If we have nothing, use a generic search with the ID
+            link_url = f"https://en.wikipedia.org/wiki/Special:Search?search={article_id}"
         
         # Replace the article ID with a markdown link
         new_text = re.sub(
             r'\b' + re.escape(article_id) + r'\b',
-            f"[{article_id}]({url})",
+            f"[{article_id}]({link_url})",
             new_text
         )
     
