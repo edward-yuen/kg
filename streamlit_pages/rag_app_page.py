@@ -11,10 +11,9 @@ import streamlit_pages.commons as st_commons
 import streamlit_pages.graph_visualisation as st_graph_viz
 import utils.constants as const
 from utils.wiki_utils import (
-    IngestablePaper,
-    PaperChunk,
-    linkify_arxiv_ids,
-    linkify_authors,
+    WikipediaArticle,
+    WikipediaChunk,
+    linkify_wiki_titles,
 )
 from utils.cai_model import getCAIHostedOpenAIModels
 from utils.knowledge_graph_rag import KnowledgeGraphRAG
@@ -74,14 +73,14 @@ def load_llm() -> Tuple[BaseLLM, str]:
         return st_commons.get_cached_local_model(), const.llama3_bos_token
 
 
-def format_context(paper_chunks: List[PaperChunk]):
+def format_context(paper_chunks: List[WikipediaChunk]):
     chunk_mappings = dict()
     for chunk in paper_chunks:
         if chunk.paper.arxiv_id not in chunk_mappings:
             chunk_mappings[chunk.paper.arxiv_id] = {"paper": chunk.paper, "chunks": []}
         chunk_mappings[chunk.paper.arxiv_id]["chunks"].append(chunk.text)
     for i, val in enumerate(chunk_mappings.values()):
-        paper: IngestablePaper = val["paper"]
+        paper: WikipediaArticle = val["paper"]
         st.markdown(
             f"""
 ### {paper.title}
@@ -157,7 +156,7 @@ def generate_responses_v2(input_text):
         ]
         answer_kg = k.invoke(input_text)
         papers_used_in_kg_answer = k.used_papers
-        kg_answer_container.markdown(linkify_arxiv_ids(answer_kg))
+        kg_answer_container.markdown(linkify_wiki_titles(answer_kg))
         kg_col.markdown("---")
 
         status.write("Generating additional details about the answer...")
@@ -167,9 +166,7 @@ def generate_responses_v2(input_text):
             "### Related Papers and Authors(from the knowledge graph)"
         )
         kg_additional_container.markdown(
-            linkify_authors(
-                linkify_arxiv_ids(kg_additional_context), kg_context_authors
-            )
+            linkify_wiki_titles(kg_additional_context)
         )
         kg_col.markdown("---")
 
@@ -192,7 +189,7 @@ def generate_responses_v2(input_text):
         with vanilla_context_expander:
             format_context(vanilla_chunks_used)
         answer_vanilla = v.invoke(input_text)
-        vanilla_answer_container.markdown(linkify_arxiv_ids(answer_vanilla))
+        vanilla_answer_container.markdown(linkify_wiki_titles(answer_vanilla))
         vanilla_col.markdown("---")
 
         status.update(
@@ -211,7 +208,7 @@ with st.form("my_form"):
         )
     )
     input_text = st.text_area(
-        "...Or ask your own AI/ML related question here.",
+        "...Or ask your own Oil and Gas related question here.",
         value="",
         disabled=(
             (st_commons.StateVariables.QUESTION_FROM_DROPDOWN.value in st.session_state)
@@ -230,3 +227,4 @@ with st.form("my_form"):
         generate_responses_v2(
             question_from_dropdown if question_from_dropdown is not None else input_text
         )
+        

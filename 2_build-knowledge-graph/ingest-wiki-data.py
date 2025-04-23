@@ -311,7 +311,7 @@ print(f"Number of chunks inserted into the knowledge graph: {chunk_count}")
 article_count = graph.query(
     """
     MATCH (p:Paper)
-    WHERE EXISTS(p.page_id)  
+    WHERE p.page_id is not null
     RETURN COUNT(p) as article_count
     """
 )[0]["article_count"]
@@ -326,7 +326,7 @@ category_count = graph.query(
 link_count = graph.query(
     """
     MATCH (source:Paper)-[r:CITES]->(target:Paper)
-    WHERE EXISTS(source.page_id) AND EXISTS(target.page_id)  
+    WHERE source.page_id IS NOT NULL AND target.page_id IS NOT NULL
     RETURN COUNT(r) as link_count
     """
 )[0]["link_count"]
